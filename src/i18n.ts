@@ -1,5 +1,32 @@
 export type Locale = "en" | "zh-Hant";
 
+const STORAGE_KEY = "yuta-prompt-locale";
+
+export function detectLocale(): Locale {
+  if (typeof navigator === "undefined") return "en";
+  const lang = navigator.language.toLowerCase();
+  if (lang.startsWith("zh")) return "zh-Hant";
+  return "en";
+}
+
+export function getStoredLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === "en" || saved === "zh-Hant") return saved;
+  } catch {
+    /* ignore */
+  }
+  return detectLocale();
+}
+
+export function persistLocale(locale: Locale) {
+  try {
+    localStorage.setItem(STORAGE_KEY, locale);
+  } catch {
+    /* ignore */
+  }
+}
+
 const dictionaries = {
   en: {
     appName: "Yuta Prompt",
@@ -58,6 +85,15 @@ const dictionaries = {
     favoritesOnly: "Favorites only",
     unfavorite: "Remove from favorites",
     favorite: "Add to favorites",
+    language: "Language",
+    langEn: "English",
+    langZhHant: "繁體中文",
+    errFolderNameEmpty: "Folder name cannot be empty",
+    errFolderExists: "A folder with this name already exists here",
+    errSelfMove: "Cannot move a folder into itself",
+    errCycleMove: "Cannot move a folder into one of its own descendants",
+    errFolderNotFound: "Folder not found",
+    errPromptNotFound: "Prompt not found",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -116,6 +152,15 @@ const dictionaries = {
     favoritesOnly: "僅顯示最愛",
     unfavorite: "取消最愛",
     favorite: "加入最愛",
+    language: "語言",
+    langEn: "English",
+    langZhHant: "繁體中文",
+    errFolderNameEmpty: "資料夾名稱不能為空",
+    errFolderExists: "此位置已有相同名稱的資料夾",
+    errSelfMove: "無法將資料夾移入自身",
+    errCycleMove: "無法將資料夾移入其子資料夾中",
+    errFolderNotFound: "找不到資料夾",
+    errPromptNotFound: "找不到提示詞",
   },
 } as const;
 
@@ -123,10 +168,29 @@ export type Dictionary = (typeof dictionaries)[Locale];
 
 let currentLocale: Locale = "en";
 
+export function getLocale(): Locale {
+  return currentLocale;
+}
+
 export function setLocale(locale: Locale) {
   currentLocale = locale;
+  persistLocale(locale);
 }
 
 export function t(key: keyof Dictionary): string {
   return dictionaries[currentLocale][key];
+}
+
+/** Map a Rust-side error message to the localized equivalent; pass through if unknown. */
+export function translateError(msg: string): string {
+  const map: Record<string, keyof Dictionary> = {
+    "folder name cannot be empty": "errFolderNameEmpty",
+    "a folder with this name already exists here": "errFolderExists",
+    "cannot move a folder into itself": "errSelfMove",
+    "cannot move a folder into one of its own descendants": "errCycleMove",
+    "folder not found": "errFolderNotFound",
+    "prompt not found": "errPromptNotFound",
+  };
+  const key = map[msg];
+  return key ? dictionaries[currentLocale][key] : msg;
 }

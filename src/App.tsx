@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { t } from "./i18n";
+import { t, getLocale, setLocale, translateError } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
 import PromptList from "./components/PromptList";
@@ -33,6 +33,7 @@ type PendingAction =
   | { kind: "close" };
 
 function App() {
+  const [locale, setLocaleState] = useState(getLocale());
   const [folders, setFolders] = useState<Folder[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [trash, setTrash] = useState<TrashListing>({ folders: [], prompts: [] });
@@ -51,6 +52,12 @@ function App() {
   }, [dirty]);
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId) ?? null;
+
+  function switchLocale() {
+    const next = locale === "en" ? "zh-Hant" : "en";
+    setLocale(next);
+    setLocaleState(next);
+  }
 
   const refreshFolders = useCallback(async () => {
     setFolders(await listFolders());
@@ -312,7 +319,7 @@ function App() {
         <div className="flex-1 overflow-y-auto">
           {error && (
             <p className="mx-2 mt-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-700">
-              {error}
+              {translateError(error)}
             </p>
           )}
           <FolderTree
@@ -326,9 +333,9 @@ function App() {
             onError={setError}
           />
         </div>
-        <footer className="border-t border-slate-200 p-2">
+        <footer className="flex items-center gap-1 border-t border-slate-200 p-2">
           <button
-            className={`w-full rounded px-2 py-1 text-sm ${
+            className={`flex-1 rounded px-2 py-1 text-sm ${
               inTrash
                 ? "bg-slate-700 text-white"
                 : "text-slate-600 hover:bg-slate-100"
@@ -336,6 +343,13 @@ function App() {
             onClick={handleOpenTrash}
           >
             🗑 {t("trash")}
+          </button>
+          <button
+            className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+            title={t("language")}
+            onClick={switchLocale}
+          >
+            {locale === "en" ? t("langZhHant") : t("langEn")}
           </button>
         </footer>
       </aside>
