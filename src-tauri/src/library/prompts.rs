@@ -123,6 +123,22 @@ pub fn record_use(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Toggle the favorite flag on a prompt; returns the new state.
+pub fn toggle_favorite(conn: &Connection, id: i64) -> Result<bool> {
+    let affected = conn
+        .execute(
+            "UPDATE prompts SET favorite = 1 - favorite, updated_at = datetime('now')
+             WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+        )
+        .map_err(|e| format!("toggle favorite: {e}"))?;
+    if affected == 0 {
+        return Err("prompt not found".to_string());
+    }
+    let p = get_by_id(conn, id)?;
+    Ok(p.favorite)
+}
+
 /// Extract unique `{{name}}` placeholders from text, in order of appearance.
 /// Returns the placeholder names (e.g. `topic` for `{{topic}}`).
 pub fn extract_variables(text: &str) -> Vec<String> {
@@ -285,6 +301,16 @@ mod tests {
         record_use(&conn, p.id).unwrap();
         let refreshed = get_by_id(&conn, p.id).unwrap();
         assert_eq!(refreshed.use_count, 2);
+    }
+
+    #[test]
+    fn toggle_favorite_flips_and_persists() {
+        let conn = setup();
+        let p = create(&conn, None, "T", "b", "n").unwrap();
+        assert!(!p.favorite);
+        assert!(toggle_favorite(&conn, p.id).unwrap());
+        assert!(!toggle_favorite(&conn, p.id).unwrap());
+        assert!(!get_by_id(&conn, p.id).unwrap().favorite);
     }
 
     #[test]

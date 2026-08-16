@@ -10,6 +10,7 @@ const dictionaries = {
     newPrompt: "New prompt",
     emptyFolders: "No folders yet",
     emptyPrompts: "No prompts in this folder",
+    emptyFavorites: "No favorites yet",
     emptyEditor: "Select a prompt to edit",
     folderNamePlaceholder: "Folder name",
     addFolder: "Add",
@@ -54,6 +55,9 @@ const dictionaries = {
     fillVarHint: "Fill the values below, then copy.",
     copyFilled: "Copy filled",
     copyOriginal: "Copy original",
+    favoritesOnly: "Favorites only",
+    unfavorite: "Remove from favorites",
+    favorite: "Add to favorites",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -64,6 +68,7 @@ const dictionaries = {
     newPrompt: "新增提示詞",
     emptyFolders: "尚無資料夾",
     emptyPrompts: "此資料夾中沒有提示詞",
+    emptyFavorites: "尚無最愛提示詞",
     emptyEditor: "選取一個提示詞進行編輯",
     folderNamePlaceholder: "資料夾名稱",
     addFolder: "新增",
@@ -108,6 +113,9 @@ const dictionaries = {
     fillVarHint: "填入以下值，然後複製。",
     copyFilled: "複製填入結果",
     copyOriginal: "複製原文",
+    favoritesOnly: "僅顯示最愛",
+    unfavorite: "取消最愛",
+    favorite: "加入最愛",
   },
 } as const;
 

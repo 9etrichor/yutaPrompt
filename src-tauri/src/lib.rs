@@ -92,6 +92,12 @@ fn record_prompt_use(app: tauri::AppHandle, id: i64) -> Result<(), String> {
     prompts::record_use(&conn, id)
 }
 
+#[tauri::command]
+fn toggle_prompt_favorite(app: tauri::AppHandle, id: i64) -> Result<bool, String> {
+    let conn = prompts::open(&app)?;
+    prompts::toggle_favorite(&conn, id)
+}
+
 /// Fill `{{name}}` placeholders in `text` with `values` and return the result.
 /// Missing values are left as-is. Does not touch the stored prompt.
 #[tauri::command]
@@ -160,6 +166,7 @@ pub fn run() {
             duplicate_prompt,
             delete_prompt,
             record_prompt_use,
+            toggle_prompt_favorite,
             substitute_variables,
             list_trash,
             restore_folder,

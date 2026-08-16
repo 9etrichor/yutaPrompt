@@ -19,6 +19,7 @@ import {
   updatePrompt,
   duplicatePrompt,
   deletePrompt,
+  toggleFavorite,
   listTrash,
   restoreFolder,
   restorePrompt,
@@ -247,6 +248,14 @@ function App() {
     [guard, selectedPromptId, refreshPrompts],
   );
 
+  const handleToggleFavorite = useCallback(
+    async (id: number) => {
+      await toggleFavorite(id);
+      await refreshPrompts();
+    },
+    [refreshPrompts],
+  );
+
   const handleAdd = useCallback(
     async (parentId: number | null, name: string) => {
       const folder = await createFolder(parentId, name);
@@ -352,6 +361,7 @@ function App() {
               onNew={handleNewPrompt}
               onDuplicate={handleDuplicate}
               onDelete={handleDeletePrompt}
+              onToggleFavorite={handleToggleFavorite}
             />
           )}
         </div>

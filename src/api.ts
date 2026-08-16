@@ -85,6 +85,10 @@ export function recordUse(id: number): Promise<void> {
   return invoke<void>("record_prompt_use", { id });
 }
 
+export function toggleFavorite(id: number): Promise<boolean> {
+  return invoke<boolean>("toggle_prompt_favorite", { id });
+}
+
 export function substituteVariables(
   text: string,
   values: Record<string, string>,
