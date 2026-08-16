@@ -1,7 +1,15 @@
+import { useEffect } from "react";
 import { t } from "./i18n";
+import { getDb } from "./db";
 import "./App.css";
 
 function App() {
+  useEffect(() => {
+    getDb().catch((err) => {
+      console.error("Failed to open database", err);
+    });
+  }, []);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-800">
       <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
