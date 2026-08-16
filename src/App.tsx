@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { t } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
 import PromptList from "./components/PromptList";
-import Editor from "./components/Editor";
+import Editor, { type EditorHandle } from "./components/Editor";
 import type { Folder, Prompt } from "./types";
 import {
   listFolders,
@@ -19,12 +20,24 @@ import {
 } from "./api";
 import "./App.css";
 
+type PendingAction =
+  | { kind: "navigate"; run: () => void }
+  | { kind: "close" };
+
 function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [pending, setPending] = useState<PendingAction | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const editorRef = useRef<EditorHandle>(null);
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId) ?? null;
 
@@ -44,13 +57,105 @@ function App() {
 
   useEffect(() => {
     refreshPrompts().catch((err) => setError(String(err)));
-    setSelectedPromptId(null);
   }, [refreshPrompts]);
 
-  const handleSelectFolder = useCallback((id: number) => {
-    setSelectedFolderId(id);
-    setSelectedPromptId(null);
+  useEffect(() => {
+    const unlistenPromise = getCurrentWindow().onCloseRequested(async (event) => {
+      if (dirtyRef.current) {
+        event.preventDefault();
+        setPending({ kind: "close" });
+      }
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []);
+
+  /** If the editor is dirty, defer `action` behind a confirm modal. */
+  const guard = useCallback((action: () => void) => {
+    if (dirtyRef.current) {
+      setPending({ kind: "navigate", run: action });
+    } else {
+      action();
+    }
+  }, []);
+
+  async function commitPending() {
+    if (!pending) return;
+    if (pending.kind === "navigate") {
+      const ok = await editorRef.current?.save();
+      if (ok) {
+        setPending(null);
+        pending.run();
+      }
+    } else {
+      const ok = await editorRef.current?.save();
+      setPending(null);
+      if (ok) getCurrentWindow().destroy();
+    }
+  }
+
+  function discardPending() {
+    setPending(null);
+    if (pending?.kind === "navigate") {
+      pending.run();
+    } else if (pending?.kind === "close") {
+      getCurrentWindow().destroy();
+    }
+  }
+
+  const handleSelectFolder = useCallback(
+    (id: number) => {
+      guard(() => {
+        setSelectedFolderId(id);
+        setSelectedPromptId(null);
+      });
+    },
+    [guard],
+  );
+
+  const handleSelectPrompt = useCallback(
+    (id: number) => {
+      guard(() => setSelectedPromptId(id));
+    },
+    [guard],
+  );
+
+  const handleNewPrompt = useCallback(() => {
+    guard(async () => {
+      const prompt = await createPrompt(
+        selectedFolderId,
+        t("untitledPrompt"),
+        "",
+        "",
+      );
+      await refreshPrompts();
+      setSelectedPromptId(prompt.id);
+    });
+  }, [guard, selectedFolderId, refreshPrompts]);
+
+  const handleDuplicate = useCallback(
+    (id: number) => {
+      guard(async () => {
+        const prompt = await duplicatePrompt(id);
+        await refreshPrompts();
+        setSelectedPromptId(prompt.id);
+      });
+    },
+    [guard, refreshPrompts],
+  );
+
+  const handleDeletePrompt = useCallback(
+    (id: number) => {
+      if (!window.confirm(t("deletePromptConfirm"))) return;
+      guard(async () => {
+        await deletePrompt(id);
+        if (selectedPromptId === id) setSelectedPromptId(null);
+        await refreshPrompts();
+      });
+    },
+    [guard, selectedPromptId, refreshPrompts],
+  );
 
   const handleAdd = useCallback(
     async (parentId: number | null, name: string) => {
@@ -89,40 +194,10 @@ function App() {
     [refreshFolders, selectedFolderId],
   );
 
-  const handleNewPrompt = useCallback(async () => {
-    const prompt = await createPrompt(
-      selectedFolderId,
-      t("untitledPrompt"),
-      "",
-      "",
-    );
-    await refreshPrompts();
-    setSelectedPromptId(prompt.id);
-  }, [selectedFolderId, refreshPrompts]);
-
   const handleSavePrompt = useCallback(
     async (title: string, body: string, notes: string) => {
       if (selectedPromptId == null) return;
       await updatePrompt(selectedPromptId, title, body, notes);
-      await refreshPrompts();
-    },
-    [selectedPromptId, refreshPrompts],
-  );
-
-  const handleDuplicate = useCallback(
-    async (id: number) => {
-      const prompt = await duplicatePrompt(id);
-      await refreshPrompts();
-      setSelectedPromptId(prompt.id);
-    },
-    [refreshPrompts],
-  );
-
-  const handleDeletePrompt = useCallback(
-    async (id: number) => {
-      if (!window.confirm(t("deletePromptConfirm"))) return;
-      await deletePrompt(id);
-      if (selectedPromptId === id) setSelectedPromptId(null);
       await refreshPrompts();
     },
     [selectedPromptId, refreshPrompts],
@@ -161,7 +236,7 @@ function App() {
           <PromptList
             prompts={prompts}
             selectedId={selectedPromptId}
-            onSelect={setSelectedPromptId}
+            onSelect={handleSelectPrompt}
             onNew={handleNewPrompt}
             onDuplicate={handleDuplicate}
             onDelete={handleDeletePrompt}
@@ -175,7 +250,13 @@ function App() {
         </header>
         {selectedPrompt ? (
           <div className="min-h-0 flex-1">
-            <Editor prompt={selectedPrompt} onSave={handleSavePrompt} />
+            <Editor
+              key={selectedPrompt.id}
+              ref={editorRef}
+              prompt={selectedPrompt}
+              onSave={handleSavePrompt}
+              onDirtyChange={setDirty}
+            />
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center bg-slate-50 p-6 text-sm text-slate-400">
@@ -183,6 +264,37 @@ function App() {
           </div>
         )}
       </main>
+
+      {pending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-96 rounded-lg bg-white p-4 shadow-lg">
+            <h2 className="mb-1 text-sm font-semibold text-slate-800">
+              {t("unsavedTitle")}
+            </h2>
+            <p className="mb-4 text-sm text-slate-600">
+              {pending.kind === "close"
+                ? t("unsavedOnClose")
+                : t("unsavedMessage")}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded px-3 py-1 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={discardPending}
+              >
+                {pending.kind === "close"
+                  ? t("closeNow")
+                  : t("discardAndLeave")}
+              </button>
+              <button
+                className="rounded bg-slate-700 px-3 py-1 text-sm text-white hover:bg-slate-800"
+                onClick={commitPending}
+              >
+                {t("saveAndLeave")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

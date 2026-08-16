@@ -30,6 +30,13 @@ const dictionaries = {
     savePrompt: "Save",
     duplicate: "Duplicate",
     promptSaved: "Saved",
+    unsavedChanges: "Unsaved changes",
+    unsavedTitle: "Unsaved changes",
+    unsavedMessage: "This prompt has unsaved changes. Save before leaving?",
+    saveAndLeave: "Save & leave",
+    discardAndLeave: "Discard",
+    unsavedOnClose: "You have unsaved changes. Close anyway?",
+    closeNow: "Close anyway",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -60,6 +67,13 @@ const dictionaries = {
     savePrompt: "儲存",
     duplicate: "複製",
     promptSaved: "已儲存",
+    unsavedChanges: "有未儲存的變更",
+    unsavedTitle: "有未儲存的變更",
+    unsavedMessage: "此提示詞有未儲存的變更。離開前要儲存嗎？",
+    saveAndLeave: "儲存並離開",
+    discardAndLeave: "捨棄變更",
+    unsavedOnClose: "您有未儲存的變更。仍要關閉嗎？",
+    closeNow: "仍要關閉",
   },
 } as const;
 
