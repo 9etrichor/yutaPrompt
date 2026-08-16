@@ -48,6 +48,12 @@ const dictionaries = {
     searchPlaceholder: "Search prompts...",
     noResults: "No results",
     searchHint: "Search title, body, notes, or folder path",
+    copyPrompt: "Copy",
+    copied: "Copied",
+    fillVariables: "Fill variables",
+    fillVarHint: "Fill the values below, then copy.",
+    copyFilled: "Copy filled",
+    copyOriginal: "Copy original",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -96,6 +102,12 @@ const dictionaries = {
     searchPlaceholder: "搜尋提示詞...",
     noResults: "沒有結果",
     searchHint: "搜尋標題、內容、備註或資料夾路徑",
+    copyPrompt: "複製",
+    copied: "已複製",
+    fillVariables: "填入變數",
+    fillVarHint: "填入以下值，然後複製。",
+    copyFilled: "複製填入結果",
+    copyOriginal: "複製原文",
   },
 } as const;
 

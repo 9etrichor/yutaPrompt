@@ -5,7 +5,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { Prompt } from "../types";
+import { recordUse, substituteVariables } from "../api";
 import { t } from "../i18n";
 
 export interface PromptDraft {
@@ -52,6 +54,11 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
   const draft: PromptDraft = { title, body, notes };
 
+  const variables = extractVariables(draft.body);
+  const [varValues, setVarValues] = useState<Record<string, string>>({});
+  const [copying, setCopying] = useState(false);
+  const [copiedFlash, setCopiedFlash] = useState(false);
+
   useEffect(() => {
     const d = isDirty(savedRef.current, draft);
     setDirty(d);
@@ -79,6 +86,35 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     draft,
     save,
   ]);
+
+  async function copy(text: string) {
+    setCopying(true);
+    try {
+      await writeText(text);
+      await recordUse(prompt.id);
+      setCopiedFlash(true);
+      setTimeout(() => setCopiedFlash(false), 1500);
+    } catch {
+      setCopiedFlash(false);
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  async function copyFilled() {
+    setCopying(true);
+    try {
+      const filled = await substituteVariables(draft.body, varValues);
+      await writeText(filled);
+      await recordUse(prompt.id);
+      setCopiedFlash(true);
+      setTimeout(() => setCopiedFlash(false), 1500);
+    } catch {
+      setCopiedFlash(false);
+    } finally {
+      setCopying(false);
+    }
+  }
 
   function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== "Tab") return;
@@ -127,6 +163,27 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           onChange={(e) => setNotes(e.target.value)}
         />
       </div>
+      {variables.length > 0 && (
+        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2">
+          <p className="mb-2 text-xs font-medium text-slate-500">
+            {t("fillVariables")}
+          </p>
+          {variables.map((v) => (
+            <label key={v} className="mb-1.5 flex items-center gap-2 text-xs">
+              <span className="w-28 shrink-0 truncate font-mono text-slate-500">
+                {v}
+              </span>
+              <input
+                className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none"
+                value={varValues[v] ?? ""}
+                onChange={(e) =>
+                  setVarValues((prev) => ({ ...prev, [v]: e.target.value }))
+                }
+              />
+            </label>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2">
         <button
           className="rounded bg-slate-700 px-3 py-1 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
@@ -135,6 +192,25 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
         >
           {t("savePrompt")}
         </button>
+        <button
+          className="rounded border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+          disabled={copying}
+          onClick={() => copy(draft.body)}
+        >
+          {variables.length > 0 ? t("copyOriginal") : t("copyPrompt")}
+        </button>
+        {variables.length > 0 && (
+          <button
+            className="rounded bg-emerald-700 px-3 py-1 text-sm text-white hover:bg-emerald-800 disabled:opacity-50"
+            disabled={copying}
+            onClick={() => copyFilled()}
+          >
+            {t("copyFilled")}
+          </button>
+        )}
+        {copiedFlash && (
+          <span className="text-xs text-emerald-600">{t("copied")}</span>
+        )}
         {dirty && (
           <span className="text-xs text-slate-500">{t("unsavedChanges")}</span>
         )}
@@ -144,3 +220,15 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 });
 
 export default Editor;
+
+/** Extract unique `{{name}}` placeholders from text, in order of appearance. */
+export function extractVariables(text: string): string[] {
+  const seen: string[] = [];
+  const re = /\{\{([^{}]+)\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (name && !seen.includes(name)) seen.push(name);
+  }
+  return seen;
+}

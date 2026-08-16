@@ -108,6 +108,50 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Record a copy/use: increments use_count and sets last_used_at.
+pub fn record_use(conn: &Connection, id: i64) -> Result<()> {
+    let affected = conn
+        .execute(
+            "UPDATE prompts SET use_count = use_count + 1, last_used_at = datetime('now')
+             WHERE id = ?1 AND deleted_at IS NULL",
+            params![id],
+        )
+        .map_err(|e| format!("record use: {e}"))?;
+    if affected == 0 {
+        return Err("prompt not found".to_string());
+    }
+    Ok(())
+}
+
+/// Extract unique `{{name}}` placeholders from text, in order of appearance.
+/// Returns the placeholder names (e.g. `topic` for `{{topic}}`).
+pub fn extract_variables(text: &str) -> Vec<String> {
+    let mut seen: Vec<String> = Vec::new();
+    for (idx, ch) in text.char_indices() {
+        if ch == '{' && text[idx..].starts_with("{{") {
+            if let Some(close_rel) = text[idx + 2..].find("}}") {
+                let name = text[idx + 2..idx + 2 + close_rel].trim();
+                if !name.is_empty() && !seen.iter().any(|s| s == name) {
+                    seen.push(name.to_string());
+                }
+            }
+        }
+    }
+    seen
+}
+
+/// Replace `{{name}}` placeholders with the given values. Values missing from
+/// `values` are left as-is. Returns the substituted text.
+pub fn substitute_variables(text: &str, values: &std::collections::HashMap<String, String>) -> String {
+    let mut out = text.to_string();
+    for name in extract_variables(text) {
+        if let Some(value) = values.get(&name) {
+            out = out.replace(&format!("{{{{{name}}}}}"), value);
+        }
+    }
+    out
+}
+
 pub fn get_by_id(conn: &Connection, id: i64) -> Result<Prompt> {
     let sql = format!(
         "SELECT {PROMPT_COLUMNS} FROM prompts WHERE id = ?1 AND deleted_at IS NULL"
@@ -231,5 +275,36 @@ mod tests {
     fn update_missing_rejected() {
         let conn = setup();
         assert!(update(&conn, 999, "T", "", "").is_err());
+    }
+
+    #[test]
+    fn record_use_increments() {
+        let conn = setup();
+        let p = create(&conn, None, "T", "b", "n").unwrap();
+        record_use(&conn, p.id).unwrap();
+        record_use(&conn, p.id).unwrap();
+        let refreshed = get_by_id(&conn, p.id).unwrap();
+        assert_eq!(refreshed.use_count, 2);
+    }
+
+    #[test]
+    fn extract_variables_finds_unique_placeholders() {
+        assert_eq!(
+            extract_variables("Hi {{topic}}, use {{topic}} and {{audience}}."),
+            vec!["topic".to_string(), "audience".to_string()]
+        );
+        assert!(extract_variables("no placeholders here").is_empty());
+        assert_eq!(extract_variables("{{  spaced  }}").len(), 1);
+    }
+
+    #[test]
+    fn substitute_variables_replaces() {
+        let mut values = std::collections::HashMap::new();
+        values.insert("topic".to_string(), "CEFR".to_string());
+        let result = substitute_variables("About {{topic}}!", &values);
+        assert_eq!(result, "About CEFR!");
+        // Missing values stay untouched.
+        let result = substitute_variables("{{topic}} / {{missing}}", &values);
+        assert_eq!(result, "CEFR / {{missing}}");
     }
 }

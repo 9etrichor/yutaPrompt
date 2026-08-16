@@ -87,6 +87,22 @@ fn delete_prompt(app: tauri::AppHandle, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn record_prompt_use(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let conn = prompts::open(&app)?;
+    prompts::record_use(&conn, id)
+}
+
+/// Fill `{{name}}` placeholders in `text` with `values` and return the result.
+/// Missing values are left as-is. Does not touch the stored prompt.
+#[tauri::command]
+fn substitute_variables(
+    text: String,
+    values: std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    Ok(prompts::substitute_variables(&text, &values))
+}
+
+#[tauri::command]
 fn list_trash(app: tauri::AppHandle) -> Result<TrashListing, String> {
     let conn = trash::open(&app)?;
     trash::list(&conn)
@@ -126,6 +142,7 @@ fn search_prompts(app: tauri::AppHandle, query: String) -> Result<Vec<SearchResu
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(db::migrations::DB_PATH, db::migrations::migrations())
@@ -142,6 +159,8 @@ pub fn run() {
             update_prompt,
             duplicate_prompt,
             delete_prompt,
+            record_prompt_use,
+            substitute_variables,
             list_trash,
             restore_folder,
             restore_prompt,

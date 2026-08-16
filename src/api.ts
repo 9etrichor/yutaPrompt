@@ -80,3 +80,14 @@ export function purgePrompt(id: number): Promise<void> {
 export function searchPrompts(query: string): Promise<SearchResult[]> {
   return invoke<SearchResult[]>("search_prompts", { query });
 }
+
+export function recordUse(id: number): Promise<void> {
+  return invoke<void>("record_prompt_use", { id });
+}
+
+export function substituteVariables(
+  text: string,
+  values: Record<string, string>,
+): Promise<string> {
+  return invoke<string>("substitute_variables", { text, values });
+}
