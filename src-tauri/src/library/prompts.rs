@@ -116,6 +116,13 @@ pub fn get_by_id(conn: &Connection, id: i64) -> Result<Prompt> {
         .map_err(|e| format!("get prompt {id}: {e}"))
 }
 
+/// Get a prompt regardless of its deleted_at state (used by trash restore).
+pub fn get_by_id_unfiltered(conn: &Connection, id: i64) -> Result<Prompt> {
+    let sql = format!("SELECT {PROMPT_COLUMNS} FROM prompts WHERE id = ?1");
+    conn.query_row(&sql, params![id], row_to_prompt)
+        .map_err(|e| format!("get prompt {id}: {e}"))
+}
+
 /// Open a fresh connection to the app database file.
 pub fn open(app: &tauri::AppHandle) -> Result<Connection> {
     folders::open(app)

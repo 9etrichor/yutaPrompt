@@ -97,6 +97,27 @@ pub fn move_folder(conn: &Connection, id: i64, new_parent_id: Option<i64>) -> Re
 }
 
 /// Soft-delete a folder.
+/// All ids in the subtree rooted at `id` (including `id` itself), live or deleted.
+pub fn subtree_ids(conn: &Connection, id: i64) -> Result<Vec<i64>> {
+    let mut stmt = conn
+        .prepare(
+            "WITH RECURSIVE sub(id) AS (
+                SELECT id FROM folders WHERE id = ?1
+                UNION ALL
+                SELECT f.id FROM folders f JOIN sub ON f.parent_id = sub.id
+             )
+             SELECT id FROM sub",
+        )
+        .map_err(|e| format!("prepare subtree: {e}"))?;
+    let ids = stmt
+        .query_map(params![id], |row| row.get(0))
+        .map_err(|e| format!("query subtree: {e}"))?
+        .collect::<rusqlite::Result<Vec<i64>>>()
+        .map_err(|e| format!("collect subtree: {e}"))?;
+    Ok(ids)
+}
+
+/// Soft-delete a folder and its whole subtree (folders + their prompts).
 pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     let affected = conn
         .execute(
@@ -107,6 +128,21 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
         .map_err(|e| format!("delete folder: {e}"))?;
     if affected == 0 {
         return Err("folder not found".to_string());
+    }
+    let ids = subtree_ids(conn, id)?;
+    for fid in &ids {
+        conn.execute(
+            "UPDATE folders SET deleted_at = datetime('now'), updated_at = datetime('now')
+             WHERE id = ?1 AND deleted_at IS NULL",
+            params![fid],
+        )
+        .map_err(|e| format!("delete subtree folder {fid}: {e}"))?;
+        conn.execute(
+            "UPDATE prompts SET deleted_at = datetime('now'), updated_at = datetime('now')
+             WHERE folder_id = ?1 AND deleted_at IS NULL",
+            params![fid],
+        )
+        .map_err(|e| format!("delete subtree prompts of {fid}: {e}"))?;
     }
     Ok(())
 }
@@ -180,9 +216,22 @@ mod tests {
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
                 deleted_at TEXT,
                 UNIQUE (parent_id, name)
+            );
+            CREATE TABLE prompts (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                folder_id    INTEGER REFERENCES folders(id),
+                title        TEXT NOT NULL,
+                body         TEXT NOT NULL DEFAULT '',
+                notes        TEXT NOT NULL DEFAULT '',
+                favorite     INTEGER NOT NULL DEFAULT 0,
+                use_count    INTEGER NOT NULL DEFAULT 0,
+                last_used_at TEXT,
+                created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                deleted_at   TEXT
             );",
         )
-        .expect("create folders table");
+        .expect("create tables");
         conn
     }
 

@@ -4,8 +4,9 @@ import { t } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
 import PromptList from "./components/PromptList";
+import TrashView from "./components/TrashView";
 import Editor, { type EditorHandle } from "./components/Editor";
-import type { Folder, Prompt } from "./types";
+import type { Folder, Prompt, TrashListing } from "./types";
 import {
   listFolders,
   createFolder,
@@ -17,6 +18,11 @@ import {
   updatePrompt,
   duplicatePrompt,
   deletePrompt,
+  listTrash,
+  restoreFolder,
+  restorePrompt,
+  purgeFolder,
+  purgePrompt,
 } from "./api";
 import "./App.css";
 
@@ -27,6 +33,8 @@ type PendingAction =
 function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [trash, setTrash] = useState<TrashListing>({ folders: [], prompts: [] });
+  const [inTrash, setInTrash] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -48,6 +56,10 @@ function App() {
   const refreshPrompts = useCallback(async () => {
     setPrompts(await listPrompts(selectedFolderId));
   }, [selectedFolderId]);
+
+  const refreshTrash = useCallback(async () => {
+    setTrash(await listTrash());
+  }, []);
 
   useEffect(() => {
     getDb()
@@ -107,6 +119,7 @@ function App() {
   const handleSelectFolder = useCallback(
     (id: number) => {
       guard(() => {
+        setInTrash(false);
         setSelectedFolderId(id);
         setSelectedPromptId(null);
       });
@@ -116,9 +129,62 @@ function App() {
 
   const handleSelectPrompt = useCallback(
     (id: number) => {
-      guard(() => setSelectedPromptId(id));
+      guard(() => {
+        setInTrash(false);
+        setSelectedPromptId(id);
+      });
     },
     [guard],
+  );
+
+  const handleOpenTrash = useCallback(() => {
+    guard(() => {
+      setInTrash(true);
+      setSelectedFolderId(null);
+      setSelectedPromptId(null);
+      refreshTrash().catch((err) => setError(String(err)));
+    });
+  }, [guard, refreshTrash]);
+
+  const handleRestoreFolder = useCallback(
+    async (id: number) => {
+      await restoreFolder(id);
+      await refreshTrash();
+      await refreshFolders();
+      await refreshPrompts();
+    },
+    [refreshTrash, refreshFolders, refreshPrompts],
+  );
+
+  const handleRestorePrompt = useCallback(
+    async (id: number) => {
+      await restorePrompt(id);
+      await refreshTrash();
+      await refreshFolders();
+      await refreshPrompts();
+    },
+    [refreshTrash, refreshFolders, refreshPrompts],
+  );
+
+  const handlePurgeFolder = useCallback(
+    async (id: number) => {
+      if (!window.confirm(t("purgeFolderConfirm"))) return;
+      await purgeFolder(id);
+      await refreshTrash();
+      await refreshFolders();
+    },
+    [refreshTrash, refreshFolders],
+  );
+
+  const handlePurgePrompt = useCallback(
+    async (id: number) => {
+      if (!window.confirm(t("purgePromptConfirm"))) return;
+      await purgePrompt(id);
+      await refreshTrash();
+      await refreshFolders();
+      await refreshPrompts();
+    },
+    [refreshTrash, refreshFolders, refreshPrompts],
   );
 
   const handleNewPrompt = useCallback(() => {
@@ -190,8 +256,9 @@ function App() {
         setSelectedPromptId(null);
       }
       await refreshFolders();
+      await refreshPrompts();
     },
-    [refreshFolders, selectedFolderId],
+    [refreshFolders, refreshPrompts, selectedFolderId],
   );
 
   const handleSavePrompt = useCallback(
@@ -226,21 +293,43 @@ function App() {
             onError={setError}
           />
         </div>
+        <footer className="border-t border-slate-200 p-2">
+          <button
+            className={`w-full rounded px-2 py-1 text-sm ${
+              inTrash
+                ? "bg-slate-700 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+            onClick={handleOpenTrash}
+          >
+            🗑 {t("trash")}
+          </button>
+        </footer>
       </aside>
 
       <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
         <header className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-500">
-          {t("prompts")}
+          {inTrash ? t("trash") : t("prompts")}
         </header>
         <div className="flex-1 overflow-y-auto">
-          <PromptList
-            prompts={prompts}
-            selectedId={selectedPromptId}
-            onSelect={handleSelectPrompt}
-            onNew={handleNewPrompt}
-            onDuplicate={handleDuplicate}
-            onDelete={handleDeletePrompt}
-          />
+          {inTrash ? (
+            <TrashView
+              trash={trash}
+              onRestoreFolder={handleRestoreFolder}
+              onRestorePrompt={handleRestorePrompt}
+              onPurgeFolder={handlePurgeFolder}
+              onPurgePrompt={handlePurgePrompt}
+            />
+          ) : (
+            <PromptList
+              prompts={prompts}
+              selectedId={selectedPromptId}
+              onSelect={handleSelectPrompt}
+              onNew={handleNewPrompt}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDeletePrompt}
+            />
+          )}
         </div>
       </aside>
 

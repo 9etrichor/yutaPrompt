@@ -3,6 +3,7 @@ mod library;
 
 use library::folders::{self, Folder};
 use library::prompts::{self, Prompt};
+use library::trash::{self, TrashListing};
 
 #[tauri::command]
 fn list_folders(app: tauri::AppHandle) -> Result<Vec<Folder>, String> {
@@ -84,6 +85,36 @@ fn delete_prompt(app: tauri::AppHandle, id: i64) -> Result<(), String> {
     prompts::delete(&conn, id)
 }
 
+#[tauri::command]
+fn list_trash(app: tauri::AppHandle) -> Result<TrashListing, String> {
+    let conn = trash::open(&app)?;
+    trash::list(&conn)
+}
+
+#[tauri::command]
+fn restore_folder(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let conn = trash::open(&app)?;
+    trash::restore_folder(&conn, id)
+}
+
+#[tauri::command]
+fn restore_prompt(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let conn = trash::open(&app)?;
+    trash::restore_prompt(&conn, id)
+}
+
+#[tauri::command]
+fn purge_folder(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let conn = trash::open(&app)?;
+    trash::purge_folder(&conn, id)
+}
+
+#[tauri::command]
+fn purge_prompt(app: tauri::AppHandle, id: i64) -> Result<(), String> {
+    let conn = trash::open(&app)?;
+    trash::purge_prompt(&conn, id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -103,7 +134,12 @@ pub fn run() {
             create_prompt,
             update_prompt,
             duplicate_prompt,
-            delete_prompt
+            delete_prompt,
+            list_trash,
+            restore_folder,
+            restore_prompt,
+            purge_folder,
+            purge_prompt
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

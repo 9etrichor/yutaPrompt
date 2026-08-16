@@ -14,3 +14,20 @@ export interface Prompt {
   favorite: boolean;
   use_count: number;
 }
+
+export interface TrashFolder {
+  id: number;
+  parent_id: number | null;
+  name: string;
+}
+
+export interface TrashPrompt {
+  id: number;
+  folder_id: number | null;
+  title: string;
+}
+
+export interface TrashListing {
+  folders: TrashFolder[];
+  prompts: TrashPrompt[];
+}
