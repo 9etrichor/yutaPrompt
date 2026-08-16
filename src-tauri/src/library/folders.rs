@@ -111,7 +111,7 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
-fn get_by_id(conn: &Connection, id: i64) -> Result<Folder> {
+pub fn get_by_id(conn: &Connection, id: i64) -> Result<Folder> {
     let sql = format!("SELECT {FOLDER_COLUMNS} FROM folders WHERE id = ?1");
     conn.query_row(&sql, params![id], row_to_folder)
         .map_err(|e| format!("get folder {id}: {e}"))

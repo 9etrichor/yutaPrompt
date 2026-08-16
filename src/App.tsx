@@ -2,66 +2,130 @@ import { useCallback, useEffect, useState } from "react";
 import { t } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
-import type { Folder } from "./types";
+import PromptList from "./components/PromptList";
+import Editor from "./components/Editor";
+import type { Folder, Prompt } from "./types";
 import {
   listFolders,
   createFolder,
   renameFolder,
   moveFolder,
   deleteFolder,
+  listPrompts,
+  createPrompt,
+  updatePrompt,
+  duplicatePrompt,
+  deletePrompt,
 } from "./api";
 import "./App.css";
 
 function App() {
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    const list = await listFolders();
-    setFolders(list);
+  const selectedPrompt = prompts.find((p) => p.id === selectedPromptId) ?? null;
+
+  const refreshFolders = useCallback(async () => {
+    setFolders(await listFolders());
   }, []);
+
+  const refreshPrompts = useCallback(async () => {
+    setPrompts(await listPrompts(selectedFolderId));
+  }, [selectedFolderId]);
 
   useEffect(() => {
     getDb()
-      .then(() => refresh())
-      .catch((err) => {
-        setError(String(err));
-      });
-  }, [refresh]);
+      .then(() => refreshFolders())
+      .catch((err) => setError(String(err)));
+  }, [refreshFolders]);
+
+  useEffect(() => {
+    refreshPrompts().catch((err) => setError(String(err)));
+    setSelectedPromptId(null);
+  }, [refreshPrompts]);
+
+  const handleSelectFolder = useCallback((id: number) => {
+    setSelectedFolderId(id);
+    setSelectedPromptId(null);
+  }, []);
 
   const handleAdd = useCallback(
     async (parentId: number | null, name: string) => {
       const folder = await createFolder(parentId, name);
-      await refresh();
+      await refreshFolders();
       setSelectedFolderId(folder.id);
     },
-    [refresh],
+    [refreshFolders],
   );
 
   const handleRename = useCallback(
     async (id: number, name: string) => {
       await renameFolder(id, name);
-      await refresh();
+      await refreshFolders();
     },
-    [refresh],
+    [refreshFolders],
   );
 
   const handleMove = useCallback(
     async (id: number, parentId: number | null) => {
       await moveFolder(id, parentId);
-      await refresh();
+      await refreshFolders();
     },
-    [refresh],
+    [refreshFolders],
   );
 
-  const handleDelete = useCallback(
+  const handleDeleteFolder = useCallback(
     async (id: number) => {
       await deleteFolder(id);
-      if (selectedFolderId === id) setSelectedFolderId(null);
-      await refresh();
+      if (selectedFolderId === id) {
+        setSelectedFolderId(null);
+        setSelectedPromptId(null);
+      }
+      await refreshFolders();
     },
-    [refresh, selectedFolderId],
+    [refreshFolders, selectedFolderId],
+  );
+
+  const handleNewPrompt = useCallback(async () => {
+    const prompt = await createPrompt(
+      selectedFolderId,
+      t("untitledPrompt"),
+      "",
+      "",
+    );
+    await refreshPrompts();
+    setSelectedPromptId(prompt.id);
+  }, [selectedFolderId, refreshPrompts]);
+
+  const handleSavePrompt = useCallback(
+    async (title: string, body: string, notes: string) => {
+      if (selectedPromptId == null) return;
+      await updatePrompt(selectedPromptId, title, body, notes);
+      await refreshPrompts();
+    },
+    [selectedPromptId, refreshPrompts],
+  );
+
+  const handleDuplicate = useCallback(
+    async (id: number) => {
+      const prompt = await duplicatePrompt(id);
+      await refreshPrompts();
+      setSelectedPromptId(prompt.id);
+    },
+    [refreshPrompts],
+  );
+
+  const handleDeletePrompt = useCallback(
+    async (id: number) => {
+      if (!window.confirm(t("deletePromptConfirm"))) return;
+      await deletePrompt(id);
+      if (selectedPromptId === id) setSelectedPromptId(null);
+      await refreshPrompts();
+    },
+    [selectedPromptId, refreshPrompts],
   );
 
   return (
@@ -79,11 +143,11 @@ function App() {
           <FolderTree
             folders={folders}
             selectedId={selectedFolderId}
-            onSelect={setSelectedFolderId}
+            onSelect={handleSelectFolder}
             onAdd={handleAdd}
             onRename={handleRename}
             onMove={handleMove}
-            onDelete={handleDelete}
+            onDelete={handleDeleteFolder}
             onError={setError}
           />
         </div>
@@ -93,8 +157,15 @@ function App() {
         <header className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-500">
           {t("prompts")}
         </header>
-        <div className="flex-1 overflow-y-auto p-3 text-sm text-slate-400">
-          {t("emptyPrompts")}
+        <div className="flex-1 overflow-y-auto">
+          <PromptList
+            prompts={prompts}
+            selectedId={selectedPromptId}
+            onSelect={setSelectedPromptId}
+            onNew={handleNewPrompt}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDeletePrompt}
+          />
         </div>
       </aside>
 
@@ -102,9 +173,15 @@ function App() {
         <header className="border-b border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
           {t("editor")}
         </header>
-        <div className="flex flex-1 items-center justify-center bg-slate-50 p-6 text-sm text-slate-400">
-          {t("emptyEditor")}
-        </div>
+        {selectedPrompt ? (
+          <div className="min-h-0 flex-1">
+            <Editor prompt={selectedPrompt} onSave={handleSavePrompt} />
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center justify-center bg-slate-50 p-6 text-sm text-slate-400">
+            {t("emptyEditor")}
+          </div>
+        )}
       </main>
     </div>
   );

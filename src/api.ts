@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Folder } from "./types";
+import type { Folder, Prompt } from "./types";
 
 export function listFolders(): Promise<Folder[]> {
   return invoke<Folder[]>("list_folders");
@@ -25,4 +25,34 @@ export function moveFolder(
 
 export function deleteFolder(id: number): Promise<void> {
   return invoke<void>("delete_folder", { id });
+}
+
+export function listPrompts(folderId: number | null): Promise<Prompt[]> {
+  return invoke<Prompt[]>("list_prompts", { folderId });
+}
+
+export function createPrompt(
+  folderId: number | null,
+  title: string,
+  body: string,
+  notes: string,
+): Promise<Prompt> {
+  return invoke<Prompt>("create_prompt", { folderId, title, body, notes });
+}
+
+export function updatePrompt(
+  id: number,
+  title: string,
+  body: string,
+  notes: string,
+): Promise<Prompt> {
+  return invoke<Prompt>("update_prompt", { id, title, body, notes });
+}
+
+export function duplicatePrompt(id: number): Promise<Prompt> {
+  return invoke<Prompt>("duplicate_prompt", { id });
+}
+
+export function deletePrompt(id: number): Promise<void> {
+  return invoke<void>("delete_prompt", { id });
 }

@@ -23,6 +23,13 @@ const dictionaries = {
     folderNameRequired: "Folder name cannot be empty",
     moveFolderTo: "Move folder to",
     rootLevel: "(root)",
+    deletePromptConfirm: "Delete this prompt?",
+    untitledPrompt: "Untitled prompt",
+    titlePlaceholder: "Title",
+    notesLabel: "Notes",
+    savePrompt: "Save",
+    duplicate: "Duplicate",
+    promptSaved: "Saved",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -46,6 +53,13 @@ const dictionaries = {
     folderNameRequired: "資料夾名稱不能為空",
     moveFolderTo: "將資料夾移至",
     rootLevel: "（根目錄）",
+    deletePromptConfirm: "確定刪除此提示詞？",
+    untitledPrompt: "未命名提示詞",
+    titlePlaceholder: "標題",
+    notesLabel: "備註",
+    savePrompt: "儲存",
+    duplicate: "複製",
+    promptSaved: "已儲存",
   },
 } as const;
 
