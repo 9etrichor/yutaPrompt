@@ -45,6 +45,9 @@ const dictionaries = {
     purgePromptConfirm: "Permanently delete this prompt?",
     folderItems: "folder",
     promptItems: "prompt",
+    searchPlaceholder: "Search prompts...",
+    noResults: "No results",
+    searchHint: "Search title, body, notes, or folder path",
   },
   "zh-Hant": {
     appName: "Yuta Prompt",
@@ -90,6 +93,9 @@ const dictionaries = {
     purgePromptConfirm: "確定永久刪除此提示詞？",
     folderItems: "資料夾",
     promptItems: "提示詞",
+    searchPlaceholder: "搜尋提示詞...",
+    noResults: "沒有結果",
+    searchHint: "搜尋標題、內容、備註或資料夾路徑",
   },
 } as const;
 

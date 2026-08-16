@@ -5,8 +5,9 @@ import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
 import PromptList from "./components/PromptList";
 import TrashView from "./components/TrashView";
+import CommandPalette from "./components/CommandPalette";
 import Editor, { type EditorHandle } from "./components/Editor";
-import type { Folder, Prompt, TrashListing } from "./types";
+import type { Folder, Prompt, SearchResult, TrashListing } from "./types";
 import {
   listFolders,
   createFolder,
@@ -35,6 +36,7 @@ function App() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [trash, setTrash] = useState<TrashListing>({ folders: [], prompts: [] });
   const [inTrash, setInTrash] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -81,6 +83,17 @@ function App() {
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   /** If the editor is dirty, defer `action` behind a confirm modal. */
@@ -185,6 +198,17 @@ function App() {
       await refreshPrompts();
     },
     [refreshTrash, refreshFolders, refreshPrompts],
+  );
+
+  const handleSearchSelect = useCallback(
+    (result: SearchResult) => {
+      guard(() => {
+        setInTrash(false);
+        setSelectedFolderId(result.prompt.folder_id);
+        setSelectedPromptId(result.prompt.id);
+      });
+    },
+    [guard],
   );
 
   const handleNewPrompt = useCallback(() => {
@@ -384,6 +408,12 @@ function App() {
           </div>
         </div>
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={handleSearchSelect}
+      />
     </div>
   );
 }

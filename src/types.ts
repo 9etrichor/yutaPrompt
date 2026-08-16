@@ -31,3 +31,8 @@ export interface TrashListing {
   folders: TrashFolder[];
   prompts: TrashPrompt[];
 }
+
+export interface SearchResult {
+  prompt: Prompt;
+  path: string;
+}

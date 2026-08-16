@@ -3,6 +3,7 @@ mod library;
 
 use library::folders::{self, Folder};
 use library::prompts::{self, Prompt};
+use library::search::{self, SearchResult};
 use library::trash::{self, TrashListing};
 
 #[tauri::command]
@@ -115,6 +116,12 @@ fn purge_prompt(app: tauri::AppHandle, id: i64) -> Result<(), String> {
     trash::purge_prompt(&conn, id)
 }
 
+#[tauri::command]
+fn search_prompts(app: tauri::AppHandle, query: String) -> Result<Vec<SearchResult>, String> {
+    let conn = search::open(&app)?;
+    search::search(&conn, &query)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -139,7 +146,8 @@ pub fn run() {
             restore_folder,
             restore_prompt,
             purge_folder,
-            purge_prompt
+            purge_prompt,
+            search_prompts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
