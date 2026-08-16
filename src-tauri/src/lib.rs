@@ -1,4 +1,5 @@
 mod db;
+mod export;
 mod library;
 
 use library::folders::{self, Folder};
@@ -144,11 +145,33 @@ fn search_prompts(app: tauri::AppHandle, query: String) -> Result<Vec<SearchResu
     search::search(&conn, &query)
 }
 
+#[tauri::command]
+fn export_to_json(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let conn = export::open(&app)?;
+    let json = export::export_json(&conn)?;
+    std::fs::write(&path, json).map_err(|e| format!("write json export: {e}"))
+}
+
+#[tauri::command]
+fn export_to_markdown(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let conn = export::open(&app)?;
+    let md = export::export_markdown(&conn)?;
+    std::fs::write(&path, md).map_err(|e| format!("write markdown export: {e}"))
+}
+
+#[tauri::command]
+fn import_from_json(app: tauri::AppHandle, path: String) -> Result<(usize, usize), String> {
+    let json = std::fs::read_to_string(&path).map_err(|e| format!("read import: {e}"))?;
+    let conn = export::open(&app)?;
+    export::import_json(&conn, &json)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(db::migrations::DB_PATH, db::migrations::migrations())
@@ -173,7 +196,10 @@ pub fn run() {
             restore_prompt,
             purge_folder,
             purge_prompt,
-            search_prompts
+            search_prompts,
+            export_to_json,
+            export_to_markdown,
+            import_from_json
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

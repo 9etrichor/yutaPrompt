@@ -81,6 +81,18 @@ export function searchPrompts(query: string): Promise<SearchResult[]> {
   return invoke<SearchResult[]>("search_prompts", { query });
 }
 
+export function exportJson(path: string): Promise<void> {
+  return invoke<void>("export_to_json", { path });
+}
+
+export function exportMarkdown(path: string): Promise<void> {
+  return invoke<void>("export_to_markdown", { path });
+}
+
+export function importJson(path: string): Promise<[number, number]> {
+  return invoke<[number, number]>("import_from_json", { path });
+}
+
 export function recordUse(id: number): Promise<void> {
   return invoke<void>("record_prompt_use", { id });
 }

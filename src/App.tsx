@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { t, getLocale, setLocale, translateError } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
@@ -25,6 +26,9 @@ import {
   restorePrompt,
   purgeFolder,
   purgePrompt,
+  exportJson,
+  exportMarkdown,
+  importJson,
 } from "./api";
 import "./App.css";
 
@@ -219,6 +223,45 @@ function App() {
     [guard],
   );
 
+  const handleExportJson = useCallback(async () => {
+    const path = await save({
+      title: t("exportJson"),
+      defaultPath: "yuta-prompt-export.json",
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!path) return;
+    await exportJson(path);
+    setError(null);
+    window.alert(t("exported"));
+  }, []);
+
+  const handleExportMarkdown = useCallback(async () => {
+    const path = await save({
+      title: t("exportMarkdown"),
+      defaultPath: "yuta-prompt-export.md",
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!path) return;
+    await exportMarkdown(path);
+    setError(null);
+    window.alert(t("exported"));
+  }, []);
+
+  const handleImportJson = useCallback(async () => {
+    if (!window.confirm(t("importConfirm"))) return;
+    const path = await open({
+      title: t("importJson"),
+      multiple: false,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!path || Array.isArray(path)) return;
+    await importJson(path);
+    await refreshFolders();
+    await refreshPrompts();
+    setError(null);
+    window.alert(t("importDone"));
+  }, [refreshFolders, refreshPrompts]);
+
   const handleNewPrompt = useCallback(() => {
     guard(async () => {
       const prompt = await createPrompt(
@@ -344,6 +387,35 @@ function App() {
           >
             🗑 {t("trash")}
           </button>
+          <div className="flex flex-col gap-1">
+            <button
+              className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+              title={t("exportJson")}
+              onClick={() => {
+                handleExportJson().catch((e) => setError(String(e)));
+              }}
+            >
+              ⬆ JSON
+            </button>
+            <button
+              className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+              title={t("exportMarkdown")}
+              onClick={() => {
+                handleExportMarkdown().catch((e) => setError(String(e)));
+              }}
+            >
+              ⬆ MD
+            </button>
+            <button
+              className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+              title={t("importJson")}
+              onClick={() => {
+                handleImportJson().catch((e) => setError(String(e)));
+              }}
+            >
+              ⬇ JSON
+            </button>
+          </div>
           <button
             className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
             title={t("language")}
