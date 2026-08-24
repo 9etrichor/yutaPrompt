@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import type { Folder } from "../types";
 import { t } from "../i18n";
 
@@ -110,6 +111,9 @@ function FolderNode({
   depth,
   folders,
   selectedId,
+  draggingId,
+  onDragStart,
+  onDropOn,
   onSelect,
   onAdd,
   onRename,
@@ -121,6 +125,9 @@ function FolderNode({
   depth: number;
   folders: Folder[];
   selectedId: number | null;
+  draggingId: number | null;
+  onDragStart: (id: number) => void;
+  onDropOn: (targetId: number | null) => void;
   onSelect: (id: number) => void;
   onAdd: (parentId: number | null, name: string) => Promise<void>;
   onRename: (id: number, name: string) => Promise<void>;
@@ -133,6 +140,7 @@ function FolderNode({
   const [renaming, setRenaming] = useState(false);
   const [moving, setMoving] = useState(false);
   const [name, setName] = useState(node.folder.name);
+  const [dropTarget, setDropTarget] = useState(false);
 
   const { folder } = node;
   const selected = selectedId === folder.id;
@@ -173,8 +181,28 @@ function FolderNode({
       <div
         className={`flex items-center gap-1 rounded px-1 py-0.5 text-sm ${
           selected ? "bg-slate-200" : "hover:bg-slate-100"
-        }`}
+        } ${dropTarget ? "outline outline-2 outline-slate-400" : ""}`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
+        draggable={!renaming}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/plain", String(folder.id));
+          e.dataTransfer.effectAllowed = "move";
+          onDragStart(folder.id);
+        }}
+        onDragOver={(e) => {
+          if (draggingId === null || draggingId === folder.id) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDropTarget(true);
+        }}
+        onDragLeave={() => setDropTarget(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDropTarget(false);
+          if (draggingId !== null && draggingId !== folder.id) {
+            onDropOn(folder.id);
+          }
+        }}
       >
         <button
           className="w-4 shrink-0 text-slate-400"
@@ -237,8 +265,8 @@ function FolderNode({
             <button
               className="rounded px-1 text-xs text-slate-400 hover:bg-slate-200 hover:text-red-600"
               title={t("delete")}
-              onClick={() => {
-                if (window.confirm(t("deleteFolderConfirm"))) {
+              onClick={async () => {
+                if (await confirm(t("deleteFolderConfirm"))) {
                   onDelete(folder.id).catch((e) => onError(String(e)));
                 }
               }}
@@ -310,6 +338,9 @@ function FolderNode({
               depth={depth + 1}
               folders={folders}
               selectedId={selectedId}
+              draggingId={draggingId}
+              onDragStart={onDragStart}
+              onDropOn={onDropOn}
               onSelect={onSelect}
               onAdd={onAdd}
               onRename={onRename}
@@ -345,6 +376,8 @@ export default function FolderTree({
 }) {
   const [addingRoot, setAddingRoot] = useState(false);
   const [name, setName] = useState("");
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dropRoot, setDropRoot] = useState(false);
   const roots = buildTree(folders);
 
   async function addRoot() {
@@ -362,8 +395,35 @@ export default function FolderTree({
     }
   }
 
+  function handleDropOn(targetId: number | null) {
+    if (draggingId === null || draggingId === targetId) return;
+    onMove(draggingId, targetId)
+      .then(() => setDraggingId(null))
+      .catch((e) => {
+        setDraggingId(null);
+        onError(String(e));
+      });
+  }
+
   return (
-    <div className="p-2">
+    <div
+      className="p-2"
+      onDragOver={(e) => {
+        if (draggingId !== null) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setDropRoot(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDropRoot(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDropRoot(false);
+        handleDropOn(null);
+      }}
+    >
       <button
         className="mb-1 w-full rounded bg-slate-700 px-2 py-1 text-sm text-white hover:bg-slate-800"
         onClick={() => setAddingRoot((v) => !v)}
@@ -403,6 +463,11 @@ export default function FolderTree({
           </button>
         </div>
       )}
+      {dropRoot && draggingId !== null && (
+        <p className="mb-1 rounded border border-dashed border-slate-400 px-2 py-1 text-xs text-slate-500">
+          {t("dropToRoot")}
+        </p>
+      )}
       {roots.length === 0 && !addingRoot ? (
         <p className="px-1 py-2 text-sm text-slate-400">{t("emptyFolders")}</p>
       ) : (
@@ -413,6 +478,9 @@ export default function FolderTree({
             depth={0}
             folders={folders}
             selectedId={selectedId}
+            draggingId={draggingId}
+            onDragStart={setDraggingId}
+            onDropOn={handleDropOn}
             onSelect={onSelect}
             onAdd={onAdd}
             onRename={onRename}

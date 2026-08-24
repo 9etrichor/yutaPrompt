@@ -291,14 +291,17 @@ Version timeline UI, richer sample packs. Still no cloud sync and no mobile.
 
 ## 16. Phase 1 launch checklist
 
-- [ ] Nested folder CRUD + prompt editor + search + copy
-- [ ] Variables + favorites + trash
-- [ ] SQLite persistence + JSON/Markdown export/import
-- [ ] EN / zh-Hant UI
-- [ ] Tailwind CSS for all Phase 1 surfaces
-- [ ] Windows and macOS builds (Linux as capacity allows)
-- [ ] No network required for happy path
-- [ ] Schema ready for unused Analysis tables
-- [ ] Keyboard shortcuts and unsaved-change guard
+- [x] Nested folder CRUD + prompt editor + search + copy
+- [x] Variables + favorites + trash
+- [x] SQLite persistence + JSON/Markdown export/import
+- [x] EN / zh-Hant UI
+- [x] Tailwind CSS for all Phase 1 surfaces
+- [x] Windows and macOS builds (Linux as capacity allows)
+- [x] No network required for happy path
+- [x] Schema ready for unused Analysis tables
+- [x] Keyboard shortcuts and unsaved-change guard
+
+> Verified: `npm run build`, `cargo test` (35 tests), `cargo clippy` clean, and desktop run all pass on Windows.
+> Windows installers (MSI + NSIS) built and install-tested. macOS build still needs a macOS runner (Phase 1 exit requires at least Windows or macOS).
 
 Phase 2 does not start until Phase 1 meets US-1 through US-4 with zero data-loss bugs.

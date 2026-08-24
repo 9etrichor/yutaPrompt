@@ -48,7 +48,7 @@ pub fn search(conn: &Connection, query: &str) -> Result<Vec<SearchResult>> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, folder_id, title, body, notes, favorite, use_count
+            "SELECT id, folder_id, title, body, notes, favorite, use_count, updated_at
              FROM prompts WHERE deleted_at IS NULL ORDER BY updated_at DESC, id DESC",
         )
         .map_err(|e| format!("prepare search: {e}"))?;
@@ -63,6 +63,7 @@ pub fn search(conn: &Connection, query: &str) -> Result<Vec<SearchResult>> {
                 notes: row.get(4)?,
                 favorite: favorite != 0,
                 use_count: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         })
         .map_err(|e| format!("query prompts for search: {e}"))?

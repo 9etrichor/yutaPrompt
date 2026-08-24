@@ -23,8 +23,9 @@ export interface EditorHandle {
 
 interface EditorProps {
   prompt: Prompt;
-  onSave: (title: string, body: string, notes: string) => Promise<void>;
+  onSave: (title: string, body: string, notes: string) => Promise<boolean>;
   onDirtyChange: (dirty: boolean) => void;
+  onError: (msg: string) => void;
 }
 
 function isDirty(saved: PromptDraft, draft: PromptDraft): boolean {
@@ -36,7 +37,7 @@ function isDirty(saved: PromptDraft, draft: PromptDraft): boolean {
 }
 
 const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { prompt, onSave, onDirtyChange },
+  { prompt, onSave, onDirtyChange, onError },
   ref,
 ) {
   const [title, setTitle] = useState(prompt.title);
@@ -68,14 +69,16 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   async function save(): Promise<boolean> {
     setSaving(true);
     try {
-      await onSave(draft.title, draft.body, draft.notes);
+      const ok = await onSave(draft.title, draft.body, draft.notes);
+      if (!ok) return false;
       savedRef.current = { ...draft };
       setDirty(false);
       onDirtyChange(false);
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1500);
       return true;
-    } catch {
+    } catch (e) {
+      onError(t("saveFailed") + ": " + String(e));
       return false;
     } finally {
       setSaving(false);
@@ -94,8 +97,8 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       await recordUse(prompt.id);
       setCopiedFlash(true);
       setTimeout(() => setCopiedFlash(false), 1500);
-    } catch {
-      setCopiedFlash(false);
+    } catch (e) {
+      onError(t("copyFailed") + ": " + String(e));
     } finally {
       setCopying(false);
     }
@@ -109,8 +112,8 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       await recordUse(prompt.id);
       setCopiedFlash(true);
       setTimeout(() => setCopiedFlash(false), 1500);
-    } catch {
-      setCopiedFlash(false);
+    } catch (e) {
+      onError(t("copyFailed") + ": " + String(e));
     } finally {
       setCopying(false);
     }
@@ -169,18 +172,27 @@ const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             {t("fillVariables")}
           </p>
           {variables.map((v) => (
-            <label key={v} className="mb-1.5 flex items-center gap-2 text-xs">
-              <span className="w-28 shrink-0 truncate font-mono text-slate-500">
+            <div key={v} className="mb-1.5 flex items-start gap-2 text-xs">
+              <span className="w-28 shrink-0 truncate pt-1 font-mono text-slate-500">
                 {v}
               </span>
-              <input
-                className="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 outline-none"
+              <textarea
+                className="min-h-7 w-full min-w-0 flex-1 resize-y rounded border border-slate-200 px-2 py-1 text-xs leading-relaxed text-slate-700 outline-none"
+                rows={1}
                 value={varValues[v] ?? ""}
-                onChange={(e) =>
-                  setVarValues((prev) => ({ ...prev, [v]: e.target.value }))
-                }
+                onChange={(e) => {
+                  setVarValues((prev) => ({ ...prev, [v]: e.target.value }));
+                  const el = e.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
+                onInput={(e) => {
+                  const el = e.currentTarget;
+                  el.style.height = "auto";
+                  el.style.height = `${el.scrollHeight}px`;
+                }}
               />
-            </label>
+            </div>
           ))}
         </div>
       )}

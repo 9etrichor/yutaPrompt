@@ -118,7 +118,7 @@ pub fn export_markdown(conn: &Connection) -> Result<String> {
 fn list_all_prompts(conn: &Connection) -> Result<Vec<Prompt>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, folder_id, title, body, notes, favorite, use_count
+            "SELECT id, folder_id, title, body, notes, favorite, use_count, updated_at
              FROM prompts WHERE deleted_at IS NULL ORDER BY folder_id, title",
         )
         .map_err(|e| format!("prepare export prompts: {e}"))?;
@@ -133,6 +133,7 @@ fn list_all_prompts(conn: &Connection) -> Result<Vec<Prompt>> {
                 notes: row.get(4)?,
                 favorite: favorite != 0,
                 use_count: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         })
         .map_err(|e| format!("query export prompts: {e}"))?
@@ -239,7 +240,7 @@ fn find_folder(conn: &Connection, parent_id: Option<i64>, name: &str) -> Result<
 fn find_prompt(conn: &Connection, folder_id: Option<i64>, title: &str) -> Result<Option<Prompt>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, folder_id, title, body, notes, favorite, use_count FROM prompts
+            "SELECT id, folder_id, title, body, notes, favorite, use_count, updated_at FROM prompts
              WHERE folder_id IS ?1 AND title = ?2 AND deleted_at IS NULL",
         )
         .map_err(|e| format!("prepare find prompt: {e}"))?;
@@ -254,6 +255,7 @@ fn find_prompt(conn: &Connection, folder_id: Option<i64>, title: &str) -> Result
                 notes: row.get(4)?,
                 favorite: favorite != 0,
                 use_count: row.get(6)?,
+                updated_at: row.get(7)?,
             })
         })
         .map_err(|e| format!("query find prompt: {e}"))?;

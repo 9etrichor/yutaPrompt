@@ -5,6 +5,8 @@ use super::folders;
 
 pub type Result<T> = std::result::Result<T, String>;
 
+use crate::library::prompts::NOW;
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct TrashFolder {
     pub id: i64,
@@ -88,20 +90,24 @@ pub fn restore_folder(conn: &Connection, id: i64) -> Result<()> {
     let ids = folders::subtree_ids(conn, id)?;
     for fid in &ids {
         conn.execute(
-            "UPDATE folders SET deleted_at = NULL, updated_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NOT NULL",
+            &format!(
+                "UPDATE folders SET deleted_at = NULL, updated_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NOT NULL"
+            ),
             params![fid],
         )
         .map_err(|e| format!("restore folder {fid}: {e}"))?;
         conn.execute(
-            "UPDATE prompts SET deleted_at = NULL, updated_at = datetime('now')
-             WHERE folder_id = ?1 AND deleted_at IS NOT NULL",
+            &format!(
+                "UPDATE prompts SET deleted_at = NULL, updated_at = {NOW}
+                 WHERE folder_id = ?1 AND deleted_at IS NOT NULL"
+            ),
             params![fid],
         )
         .map_err(|e| format!("restore prompts under {fid}: {e}"))?;
     }
     conn.execute(
-        "UPDATE folders SET parent_id = ?1, updated_at = datetime('now') WHERE id = ?2",
+        &format!("UPDATE folders SET parent_id = ?1, updated_at = {NOW} WHERE id = ?2"),
         params![parent_id, id],
     )
     .map_err(|e| format!("relink restored folder: {e}"))?;
@@ -117,8 +123,10 @@ pub fn restore_prompt(conn: &Connection, id: i64) -> Result<()> {
     };
     let affected = conn
         .execute(
-            "UPDATE prompts SET deleted_at = NULL, folder_id = ?1, updated_at = datetime('now')
-             WHERE id = ?2 AND deleted_at IS NOT NULL",
+            &format!(
+                "UPDATE prompts SET deleted_at = NULL, folder_id = ?1, updated_at = {NOW}
+                 WHERE id = ?2 AND deleted_at IS NOT NULL"
+            ),
             params![folder_id, id],
         )
         .map_err(|e| format!("restore prompt: {e}"))?;

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { save, open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import { save, open, confirm, message } from "@tauri-apps/plugin-dialog";
 import { t, getLocale, setLocale, translateError } from "./i18n";
 import { getDb } from "./db";
 import FolderTree from "./components/FolderTree";
 import PromptList from "./components/PromptList";
 import TrashView from "./components/TrashView";
 import CommandPalette from "./components/CommandPalette";
+import Scratchpad from "./components/Scratchpad";
 import Editor, { type EditorHandle } from "./components/Editor";
 import type { Folder, Prompt, SearchResult, TrashListing } from "./types";
 import {
@@ -29,6 +31,7 @@ import {
   exportJson,
   exportMarkdown,
   importJson,
+  setMenuLocale,
 } from "./api";
 import "./App.css";
 
@@ -47,13 +50,48 @@ function App() {
   const [selectedPromptId, setSelectedPromptId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [conflict, setConflict] = useState<{
+    draft: { title: string; body: string; notes: string };
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<EditorHandle>(null);
   const dirtyRef = useRef(false);
+  const menuActionsRef = useRef<Record<string, () => void>>({});
 
   useEffect(() => {
     dirtyRef.current = dirty;
   }, [dirty]);
+
+  useEffect(() => {
+    menuActionsRef.current = {
+      "new-prompt": () => handleNewPrompt(),
+      save: () => {
+        editorRef.current?.save();
+      },
+      search: () => setPaletteOpen(true),
+      "export-json": () => {
+        handleExportJson().catch((e) => setError(String(e)));
+      },
+      "export-md": () => {
+        handleExportMarkdown().catch((e) => setError(String(e)));
+      },
+      "import-json": () => {
+        handleImportJson().catch((e) => setError(String(e)));
+      },
+    };
+  });
+
+  useEffect(() => {
+    const ids = ["new-prompt", "save", "search", "export-json", "export-md", "import-json"];
+    const unlisteners = ids.map((id) =>
+      listen(`menu://${id}`, () => {
+        menuActionsRef.current[id]?.();
+      }),
+    );
+    return () => {
+      unlisteners.forEach((p) => p.then((u) => u()));
+    };
+  }, []);
 
   const selectedPrompt = prompts.find((p) => p.id === selectedPromptId) ?? null;
 
@@ -61,6 +99,7 @@ function App() {
     const next = locale === "en" ? "zh-Hant" : "en";
     setLocale(next);
     setLocaleState(next);
+    setMenuLocale(next === "en").catch((e) => setError(String(e)));
   }
 
   const refreshFolders = useCallback(async () => {
@@ -79,6 +118,7 @@ function App() {
     getDb()
       .then(() => refreshFolders())
       .catch((err) => setError(String(err)));
+    setMenuLocale(getLocale() === "en").catch((e) => setError(String(e)));
   }, [refreshFolders]);
 
   useEffect(() => {
@@ -102,6 +142,9 @@ function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        editorRef.current?.save();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -193,7 +236,7 @@ function App() {
 
   const handlePurgeFolder = useCallback(
     async (id: number) => {
-      if (!window.confirm(t("purgeFolderConfirm"))) return;
+      if (!(await confirm(t("purgeFolderConfirm")))) return;
       await purgeFolder(id);
       await refreshTrash();
       await refreshFolders();
@@ -203,7 +246,7 @@ function App() {
 
   const handlePurgePrompt = useCallback(
     async (id: number) => {
-      if (!window.confirm(t("purgePromptConfirm"))) return;
+      if (!(await confirm(t("purgePromptConfirm")))) return;
       await purgePrompt(id);
       await refreshTrash();
       await refreshFolders();
@@ -232,7 +275,7 @@ function App() {
     if (!path) return;
     await exportJson(path);
     setError(null);
-    window.alert(t("exported"));
+    await message(t("exported"));
   }, []);
 
   const handleExportMarkdown = useCallback(async () => {
@@ -244,11 +287,11 @@ function App() {
     if (!path) return;
     await exportMarkdown(path);
     setError(null);
-    window.alert(t("exported"));
+    await message(t("exported"));
   }, []);
 
   const handleImportJson = useCallback(async () => {
-    if (!window.confirm(t("importConfirm"))) return;
+    if (!(await confirm(t("importConfirm")))) return;
     const path = await open({
       title: t("importJson"),
       multiple: false,
@@ -259,7 +302,7 @@ function App() {
     await refreshFolders();
     await refreshPrompts();
     setError(null);
-    window.alert(t("importDone"));
+    await message(t("importDone"));
   }, [refreshFolders, refreshPrompts]);
 
   const handleNewPrompt = useCallback(() => {
@@ -287,8 +330,8 @@ function App() {
   );
 
   const handleDeletePrompt = useCallback(
-    (id: number) => {
-      if (!window.confirm(t("deletePromptConfirm"))) return;
+    async (id: number) => {
+      if (!(await confirm(t("deletePromptConfirm")))) return;
       guard(async () => {
         await deletePrompt(id);
         if (selectedPromptId === id) setSelectedPromptId(null);
@@ -346,12 +389,47 @@ function App() {
 
   const handleSavePrompt = useCallback(
     async (title: string, body: string, notes: string) => {
-      if (selectedPromptId == null) return;
-      await updatePrompt(selectedPromptId, title, body, notes);
-      await refreshPrompts();
+      if (selectedPromptId == null) return false;
+      try {
+        await updatePrompt(
+          selectedPromptId,
+          title,
+          body,
+          notes,
+          selectedPrompt?.updated_at ?? null,
+          false,
+        );
+        await refreshPrompts();
+        return true;
+      } catch (e) {
+        const msg = String(e);
+        if (msg.includes("prompt changed since it was loaded")) {
+          setConflict({ draft: { title, body, notes } });
+          return false;
+        }
+        throw e;
+      }
     },
-    [selectedPromptId, refreshPrompts],
+    [selectedPromptId, selectedPrompt, refreshPrompts],
   );
+
+  const handleForceSave = useCallback(async () => {
+    if (!conflict || selectedPromptId == null) return;
+    try {
+      await updatePrompt(
+        selectedPromptId,
+        conflict.draft.title,
+        conflict.draft.body,
+        conflict.draft.notes,
+        null,
+        true,
+      );
+      setConflict(null);
+      await refreshPrompts();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [conflict, selectedPromptId, refreshPrompts]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-100 text-slate-800">
@@ -458,21 +536,62 @@ function App() {
           {t("editor")}
         </header>
         {selectedPrompt ? (
-          <div className="min-h-0 flex-1">
-            <Editor
-              key={selectedPrompt.id}
-              ref={editorRef}
-              prompt={selectedPrompt}
-              onSave={handleSavePrompt}
-              onDirtyChange={setDirty}
-            />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1">
+              <Editor
+                key={selectedPrompt.id}
+                ref={editorRef}
+                prompt={selectedPrompt}
+                onSave={handleSavePrompt}
+                onDirtyChange={setDirty}
+                onError={setError}
+              />
+            </div>
+            <Scratchpad />
           </div>
         ) : (
-          <div className="flex flex-1 items-center justify-center bg-slate-50 p-6 text-sm text-slate-400">
-            {t("emptyEditor")}
+          <div className="flex flex-1 flex-col">
+            <div className="flex flex-1 items-center justify-center bg-slate-50 p-6 text-sm text-slate-400">
+              {t("emptyEditor")}
+            </div>
+            <Scratchpad />
           </div>
         )}
       </main>
+
+      {conflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-96 rounded-lg bg-white p-4 shadow-lg">
+            <h2 className="mb-1 text-sm font-semibold text-slate-800">
+              {t("conflictTitle")}
+            </h2>
+            <p className="mb-4 text-sm text-slate-600">{t("conflictMessage")}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="rounded px-3 py-1 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => setConflict(null)}
+              >
+                {t("cancel")}
+              </button>
+              <button
+                className="rounded bg-slate-700 px-3 py-1 text-sm text-white hover:bg-slate-800"
+                onClick={() => {
+                  setConflict(null);
+                  refreshPrompts().catch((e) => setError(String(e)));
+                }}
+              >
+                {t("reloadPrompt")}
+              </button>
+              <button
+                className="rounded bg-red-700 px-3 py-1 text-sm text-white hover:bg-red-800"
+                onClick={handleForceSave}
+              >
+                {t("overwrite")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">

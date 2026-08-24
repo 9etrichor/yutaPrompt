@@ -5,6 +5,9 @@ use crate::db::get_connection;
 
 pub type Result<T> = std::result::Result<T, String>;
 
+/// Millisecond-precision UTC timestamp (see prompts::NOW).
+pub(crate) const NOW: &str = "strftime('%Y-%m-%d %H:%M:%f','now')";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Folder {
     pub id: i64,
@@ -52,8 +55,10 @@ pub fn create(conn: &Connection, parent_id: Option<i64>, name: &str) -> Result<F
 
     let sort_order = next_sort_order(conn, parent_id)?;
     conn.execute(
-        "INSERT INTO folders (parent_id, name, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, datetime('now'), datetime('now'))",
+        &format!(
+            "INSERT INTO folders (parent_id, name, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, {NOW}, {NOW})"
+        ),
         params![parent_id, name, sort_order],
     )
     .map_err(|e| format!("insert folder: {e}"))?;
@@ -71,7 +76,7 @@ pub fn rename(conn: &Connection, id: i64, name: &str) -> Result<Folder> {
         return Err("a folder with this name already exists here".to_string());
     }
     conn.execute(
-        "UPDATE folders SET name = ?1, updated_at = datetime('now') WHERE id = ?2",
+        &format!("UPDATE folders SET name = ?1, updated_at = {NOW} WHERE id = ?2"),
         params![name, id],
     )
     .map_err(|e| format!("rename folder: {e}"))?;
@@ -89,7 +94,7 @@ pub fn move_folder(conn: &Connection, id: i64, new_parent_id: Option<i64>) -> Re
         }
     }
     conn.execute(
-        "UPDATE folders SET parent_id = ?1, updated_at = datetime('now') WHERE id = ?2",
+        &format!("UPDATE folders SET parent_id = ?1, updated_at = {NOW} WHERE id = ?2"),
         params![new_parent_id, id],
     )
     .map_err(|e| format!("move folder: {e}"))?;
@@ -121,8 +126,10 @@ pub fn subtree_ids(conn: &Connection, id: i64) -> Result<Vec<i64>> {
 pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     let affected = conn
         .execute(
-            "UPDATE folders SET deleted_at = datetime('now'), updated_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE folders SET deleted_at = {NOW}, updated_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             params![id],
         )
         .map_err(|e| format!("delete folder: {e}"))?;
@@ -132,14 +139,18 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     let ids = subtree_ids(conn, id)?;
     for fid in &ids {
         conn.execute(
-            "UPDATE folders SET deleted_at = datetime('now'), updated_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE folders SET deleted_at = {NOW}, updated_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             params![fid],
         )
         .map_err(|e| format!("delete subtree folder {fid}: {e}"))?;
         conn.execute(
-            "UPDATE prompts SET deleted_at = datetime('now'), updated_at = datetime('now')
-             WHERE folder_id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE prompts SET deleted_at = {NOW}, updated_at = {NOW}
+                 WHERE folder_id = ?1 AND deleted_at IS NULL"
+            ),
             params![fid],
         )
         .map_err(|e| format!("delete subtree prompts of {fid}: {e}"))?;

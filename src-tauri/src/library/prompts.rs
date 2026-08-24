@@ -5,6 +5,11 @@ use super::folders;
 
 pub type Result<T> = std::result::Result<T, String>;
 
+/// SQLite expression for a millisecond-precision UTC timestamp. Uses `%f`
+/// (fractional seconds) so two writes in the same second differ, which the
+/// two-window overwrite guard (US-8) relies on.
+pub(crate) const NOW: &str = "strftime('%Y-%m-%d %H:%M:%f','now')";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Prompt {
     pub id: i64,
@@ -14,9 +19,11 @@ pub struct Prompt {
     pub notes: String,
     pub favorite: bool,
     pub use_count: i64,
+    pub updated_at: Option<String>,
 }
 
-const PROMPT_COLUMNS: &str = "id, folder_id, title, body, notes, favorite, use_count";
+const PROMPT_COLUMNS: &str =
+    "id, folder_id, title, body, notes, favorite, use_count, updated_at";
 
 fn row_to_prompt(row: &rusqlite::Row) -> rusqlite::Result<Prompt> {
     let favorite: i64 = row.get(5)?;
@@ -28,6 +35,7 @@ fn row_to_prompt(row: &rusqlite::Row) -> rusqlite::Result<Prompt> {
         notes: row.get(4)?,
         favorite: favorite != 0,
         use_count: row.get(6)?,
+        updated_at: row.get(7)?,
     })
 }
 
@@ -61,8 +69,10 @@ pub fn create(
         folders::get_by_id(conn, fid).map_err(|e| format!("folder not found: {e}"))?;
     }
     conn.execute(
-        "INSERT INTO prompts (folder_id, title, body, notes, favorite, use_count, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 0, 0, datetime('now'), datetime('now'))",
+        &format!(
+            "INSERT INTO prompts (folder_id, title, body, notes, favorite, use_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 0, 0, {NOW}, {NOW})"
+        ),
         params![folder_id, title, body, notes],
     )
     .map_err(|e| format!("insert prompt: {e}"))?;
@@ -74,9 +84,11 @@ pub fn create(
 pub fn update(conn: &Connection, id: i64, title: &str, body: &str, notes: &str) -> Result<Prompt> {
     let affected = conn
         .execute(
-            "UPDATE prompts
-             SET title = ?1, body = ?2, notes = ?3, updated_at = datetime('now')
-             WHERE id = ?4 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE prompts
+                 SET title = ?1, body = ?2, notes = ?3, updated_at = {NOW}
+                 WHERE id = ?4 AND deleted_at IS NULL"
+            ),
             params![title, body, notes, id],
         )
         .map_err(|e| format!("update prompt: {e}"))?;
@@ -84,6 +96,23 @@ pub fn update(conn: &Connection, id: i64, title: &str, body: &str, notes: &str) 
         return Err("prompt not found".to_string());
     }
     get_by_id(conn, id)
+}
+
+/// Update, but only if the stored `updated_at` still equals `expected_updated_at`.
+/// Returns `Err("prompt changed since it was loaded")` on conflict (two-window guard).
+pub fn update_checked(
+    conn: &Connection,
+    id: i64,
+    title: &str,
+    body: &str,
+    notes: &str,
+    expected_updated_at: Option<String>,
+) -> Result<Prompt> {
+    let current = get_by_id(conn, id)?;
+    if current.updated_at != expected_updated_at {
+        return Err("prompt changed since it was loaded".to_string());
+    }
+    update(conn, id, title, body, notes)
 }
 
 /// Copy a prompt into the same folder with " (copy)" appended to the title.
@@ -97,8 +126,10 @@ pub fn duplicate(conn: &Connection, id: i64) -> Result<Prompt> {
 pub fn delete(conn: &Connection, id: i64) -> Result<()> {
     let affected = conn
         .execute(
-            "UPDATE prompts SET deleted_at = datetime('now'), updated_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE prompts SET deleted_at = {NOW}, updated_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             params![id],
         )
         .map_err(|e| format!("delete prompt: {e}"))?;
@@ -112,8 +143,10 @@ pub fn delete(conn: &Connection, id: i64) -> Result<()> {
 pub fn record_use(conn: &Connection, id: i64) -> Result<()> {
     let affected = conn
         .execute(
-            "UPDATE prompts SET use_count = use_count + 1, last_used_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE prompts SET use_count = use_count + 1, last_used_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             params![id],
         )
         .map_err(|e| format!("record use: {e}"))?;
@@ -127,8 +160,10 @@ pub fn record_use(conn: &Connection, id: i64) -> Result<()> {
 pub fn toggle_favorite(conn: &Connection, id: i64) -> Result<bool> {
     let affected = conn
         .execute(
-            "UPDATE prompts SET favorite = 1 - favorite, updated_at = datetime('now')
-             WHERE id = ?1 AND deleted_at IS NULL",
+            &format!(
+                "UPDATE prompts SET favorite = 1 - favorite, updated_at = {NOW}
+                 WHERE id = ?1 AND deleted_at IS NULL"
+            ),
             params![id],
         )
         .map_err(|e| format!("toggle favorite: {e}"))?;
@@ -254,6 +289,23 @@ mod tests {
         assert_eq!(updated.title, "T2");
         assert_eq!(updated.body, "b2");
         assert_eq!(updated.notes, "n2");
+    }
+
+    #[test]
+    fn update_checked_rejects_stale_timestamp() {
+        let conn = setup();
+        let p = create(&conn, None, "T", "b", "n").unwrap();
+        let loaded = p.updated_at.clone();
+        // Simulate another window changing the prompt after we loaded it.
+        // Bump a full second so the stored timestamp can never match `loaded`.
+        conn.execute(
+            "UPDATE prompts SET body = 'external', updated_at = strftime('%Y-%m-%d %H:%M:%f','now','+1 second')",
+            [],
+        )
+        .unwrap();
+        let err =
+            update_checked(&conn, p.id, "T3", "b3", "n3", loaded).unwrap_err();
+        assert!(err.contains("changed since it was loaded"));
     }
 
     #[test]

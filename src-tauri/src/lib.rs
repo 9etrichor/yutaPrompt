@@ -1,11 +1,17 @@
 mod db;
 mod export;
 mod library;
+mod menu;
 
 use library::folders::{self, Folder};
 use library::prompts::{self, Prompt};
 use library::search::{self, SearchResult};
 use library::trash::{self, TrashListing};
+
+#[tauri::command]
+fn set_menu_locale(app: tauri::AppHandle, is_en: bool) -> Result<(), String> {
+    menu::install_menu(&app, is_en).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 fn list_folders(app: tauri::AppHandle) -> Result<Vec<Folder>, String> {
@@ -70,9 +76,15 @@ fn update_prompt(
     title: String,
     body: String,
     notes: String,
+    expected_updated_at: Option<String>,
+    force: bool,
 ) -> Result<Prompt, String> {
     let conn = prompts::open(&app)?;
-    prompts::update(&conn, id, &title, &body, &notes)
+    if force {
+        prompts::update(&conn, id, &title, &body, &notes)
+    } else {
+        prompts::update_checked(&conn, id, &title, &body, &notes, expected_updated_at)
+    }
 }
 
 #[tauri::command]
@@ -177,7 +189,15 @@ pub fn run() {
                 .add_migrations(db::migrations::DB_PATH, db::migrations::migrations())
                 .build(),
         )
+        .setup(|app| {
+            menu::install_menu(app.handle(), true)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            menu::emit_menu(app, event.id().0.as_str());
+        })
         .invoke_handler(tauri::generate_handler![
+            set_menu_locale,
             list_folders,
             create_folder,
             rename_folder,

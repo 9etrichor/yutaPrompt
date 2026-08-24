@@ -13,6 +13,7 @@ export interface Prompt {
   notes: string;
   favorite: boolean;
   use_count: number;
+  updated_at: string | null;
 }
 
 export interface TrashFolder {

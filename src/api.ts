@@ -45,8 +45,17 @@ export function updatePrompt(
   title: string,
   body: string,
   notes: string,
+  expectedUpdatedAt: string | null,
+  force: boolean,
 ): Promise<Prompt> {
-  return invoke<Prompt>("update_prompt", { id, title, body, notes });
+  return invoke<Prompt>("update_prompt", {
+    id,
+    title,
+    body,
+    notes,
+    expectedUpdatedAt,
+    force,
+  });
 }
 
 export function duplicatePrompt(id: number): Promise<Prompt> {
@@ -91,6 +100,10 @@ export function exportMarkdown(path: string): Promise<void> {
 
 export function importJson(path: string): Promise<[number, number]> {
   return invoke<[number, number]>("import_from_json", { path });
+}
+
+export function setMenuLocale(isEn: boolean): Promise<void> {
+  return invoke<void>("set_menu_locale", { isEn });
 }
 
 export function recordUse(id: number): Promise<void> {
